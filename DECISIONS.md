@@ -62,13 +62,28 @@ Status: `ADOTADA` = decisao inicial; `ABERTA` = precisa ser resolvida antes de a
 
 **Risco/validacao:** concorrencia pode gerar espera/timeout; mapear erro transitorio para `WALLET_BUSY` e HTTP 503.
 
-## DEC-07 — Idempotency-Key global e resultado historico — ADOTADA
+## DEC-07 — Idempotencia global por solicitacao — ADOTADA
 
-**Decisao:** `idempotency_key` obrigatoria e `UNIQUE` global na tabela de transacoes aplicadas; o payload logico inclui carteira, tipo e valor. Mesma chave + mesmo payload => retorna ID, saldo historico e instante originais; payload diferente => 409.
+**Decisao:** A chave de idempotencia sera a chave primaria
+global de WALLET_OPERATION_REQUEST. Essa tabela armazenara
+o payload original e o resultado da tentativa.
 
-**Motivo:** protegemos retries apos falha de rede e impedimos debitagem duplicada, inclusive em carteiras diferentes por meio da restricao unica.
+Uma operacao aplicada gerara um lancamento em
+WALLET_TRANSACTION, associado a sua solicitacao.
 
-**Risco/validacao:** `UNIQUE` sozinha nao implementa replay; apos conflito em insercao concorrente deve-se reler a chave e comparar o payload. Testar duas carteiras concorrentes com chave igual.
+**Motivo:** Permitir replay do resultado original, inclusive
+de tentativas rejeitadas por saldo insuficiente.
+
+**Invariantes:**
+- Mesma chave e mesmo payload: retornar resultado original.
+- Mesma chave e payload diferente: conflito HTTP 409.
+- Uma solicitacao pode gerar no maximo um lancamento financeiro.
+- Tentativas rejeitadas nao alteram o saldo.
+- Uma nova tentativa logica exige uma nova chave.
+
+**Risco:** A unicidade garante a exclusividade da chave,
+mas o package ainda precisara controlar concorrencia e
+persistir os resultados terminais corretamente.
 
 ## DEC-08 — Saldo materializado + extrato imutavel + auditoria por trigger — ADOTADA
 
@@ -78,15 +93,38 @@ Status: `ADOTADA` = decisao inicial; `ABERTA` = precisa ser resolvida antes de a
 
 **Risco/validacao:** `last_transaction_id` so deve correlacionar um evento de saldo quando alterado na mesma operacao; atualizacao direta sem essa mudanca deve ser auditada com `transaction_id = NULL`, evitando atribuicao falsa. Projetar e testar esse comportamento na implementacao da trigger.
 
-## DEC-09 — Escopo da idempotencia de operacoes rejeitadas — ABERTA (bloqueia a implementacao final da procedure)
+## DEC-09 — Persistencia de tentativas rejeitadas — MODELO ADOTADO
 
-**Pergunta:** se uma tentativa de DEBIT falhar por saldo insuficiente e a mesma chave for repetida *depois de um credito*, a API deve repetir `422` ou permitir executar o debito?
+**Decisao:** Registrar em WALLET_OPERATION_REQUEST as
+tentativas financeiras validas, incluindo rejeicoes por
+saldo insuficiente.
 
-**Modelo atual:** so registra na tabela de lancamentos operacoes **aplicadas**. Portanto, por si so, **nao garante replay de uma rejeicao**.
+**Modelo:**
+- PENDING: processamento em andamento, nao confirmado.
+- APPLIED: operacao financeira aplicada.
+- REJECTED: tentativa rejeitada, com codigo de erro preservado.
 
-**Tensao tecnica:** o enunciado pede erros PL/SQL via `RAISE_APPLICATION_ERROR` e repeticao do mesmo resultado. Gravar rejeicao e depois propagar uma excecao que causa rollback na mesma transacao apagaria o registro de rejeicao. Para garantir replay de falhas e preciso desenhar um controle de idempotencia persistente, com semantica transacional explicita — e comprova-lo com testes.
+**Escopo:** Neste primeiro desenho, o registro duravel de
+rejeicoes contempla saldo insuficiente. Erros de formato,
+credenciais invalidas e carteiras inexistentes continuam
+sendo tratados separadamente.
 
-**Encaminhamento:** decidir e documentar a semantica antes de implementar C07/C08; nao afirmar que o caso de falha esta coberto ate existir estrategia validada. Se o avaliador interpretar replay como aplicavel apenas a transacoes aplicadas, registrar essa premissa e justificativa; caso contrario, adotar persistencia explicita do resultado da tentativa rejeitada com cuidado para nao introduzir commits parciais.
+**Motivo:** Garantir que uma tentativa rejeitada nao seja
+executada posteriormente com a mesma chave, mesmo quando
+o saldo da carteira mudar.
+
+**Pendente de implementacao:** Definir como a procedure
+persiste uma rejeicao e devolve o erro de negocio sem
+provocar rollback do registro.
+
+O enunciado solicita RAISE_APPLICATION_ERROR para erros de
+negocio, enquanto a arquitetura utiliza transacoes
+controladas pelo Spring. Essa interacao sera resolvida e
+documentada antes da implementacao definitiva do package.
+
+**Validacao obrigatoria:** Testar rejeicao, credito
+posterior e retry com a mesma chave; o resultado da
+requisicao original deve ser preservado.
 
 ## DEC-10 — BIGDECIMAL e validacao explicita de escala — ADOTADA
 
