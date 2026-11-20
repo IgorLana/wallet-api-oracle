@@ -241,6 +241,54 @@ class WalletOracleIT {
     }
 
     @Test
+    void applicationCannotReadAuditOrMutateOwnerTables() throws Exception {
+        long id = wallet();
+        try (Connection app = DriverManager.getConnection(OracleTestDatabase.jdbcUrl(),
+                "WALLET_APP", OracleTestDatabase.APP_PASSWORD)) {
+            assertThrows(SQLException.class, () -> {
+                try (PreparedStatement sql = app.prepareStatement(
+                        "SELECT COUNT(*) FROM WALLET_AUDIT.BALANCE_AUDIT")) {
+                    sql.executeQuery();
+                }
+            });
+            assertThrows(SQLException.class, () -> {
+                try (PreparedStatement sql = app.prepareStatement(
+                        "INSERT INTO WALLET_OWNER.WALLET (id, balance) VALUES (-1, 0)")) {
+                    sql.executeUpdate();
+                }
+            });
+            assertThrows(SQLException.class, () -> {
+                try (PreparedStatement sql = app.prepareStatement(
+                        "DELETE FROM WALLET_OWNER.WALLET WHERE id=?")) {
+                    sql.setLong(1, id);
+                    sql.executeUpdate();
+                }
+            });
+        }
+        money("0.00", service.getWallet(id).balance());
+    }
+
+    @Test
+    void springMvcReturnsCorrectStatusForUnsupportedRouteAndMediaType() throws Exception {
+        HttpResponse<String> wrongMethod = http("GET", "/wallets", null, null, true);
+        assertEquals(405, wrongMethod.statusCode());
+        assertTrue(wrongMethod.body().contains("METHOD_NOT_ALLOWED"));
+
+        HttpResponse<String> wrongPath = http("GET", "/no-such-api-route", null, null, false);
+        assertEquals(404, wrongPath.statusCode());
+        assertTrue(wrongPath.body().contains("RESOURCE_NOT_FOUND"));
+
+        HttpRequest plainText = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/wallets"))
+                .header("X-API-Key", OracleTestDatabase.API_KEY)
+                .header("Content-Type", "text/plain")
+                .POST(HttpRequest.BodyPublishers.ofString("plain text"))
+                .build();
+        HttpResponse<String> wrongType = http.send(plainText, HttpResponse.BodyHandlers.ofString());
+        assertEquals(415, wrongType.statusCode());
+        assertTrue(wrongType.body().contains("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
     void uncommittedOperationRollsBackLedgerWalletRequestAndAuditTogether() throws Exception {
         long[] createdWalletId = {-1L};
         new TransactionTemplate(transactionManager).execute(status -> {

@@ -82,17 +82,21 @@ Flyway, continue usando `bash db/scripts/migrate.sh` no ambiente local.
 
 ## Limitacoes e riscos que permanecem
 
-- Se o C09 nao compilar, corrigir esse bloqueio antes dos testes.
 - A suite pressupoe o comportamento da V5: saldo insuficiente e um resultado
   REJECTED que a camada transacional precisa confirmar. Nao lancamos uma
   excecao dentro do metodo `@Transactional` ao produzir REJECTED.
 - O tratamento atual de disputa da mesma chave entre carteiras diferentes
   devolve 409 para a transacao perdedora, mesmo em certas disputas de retry.
   Isso e um comportamento conhecido para revisar na versao final.
-- Os testes provam comportamento das operacoes cobertas, nao ausencia total
-  de bugs, nao fazem teste de carga e nao garantem protecao contra SYS/DBA.
-- Compilacao das migrations Oracle e runtime Testcontainers precisam ser
-  confirmados no Mac; este artefato ainda nao foi executado contra Docker.
+- Os testes demonstram os cenarios cobertos, nao ausencia de bugs ou protecao
+  contra operacoes de um administrador Oracle suficientemente privilegiado.
+- Validacao local informada pelo autor: `./mvnw -U clean compile`, `./mvnw test`
+  e `./mvnw -U verify` executados com sucesso no macOS em 19/11/2026,
+  incluindo inicializacao do Oracle por Testcontainers. Os resultados nao
+  substituem uma reproducao em outro ambiente nem uma pipeline de CI.
+- O teste de carga opcional e verificacao de consistencia sob N requisicoes
+  constam em `docs/load-testing-c12.md`. Resultados medidos sao publicados
+  em `docs/load-test-results.md` somente depois de uma execucao com sucesso.
 
 ## Depuracao
 
@@ -108,13 +112,3 @@ nao esta acessivel ao Testcontainers. `ORA-01017` normalmente aponta para
 credenciais de teste que nao correspondem ao bootstrap. Se aparecer um
 erro SQL ao aplicar as migrations, confira o log da classe `OracleTestDatabase`.
 
-## O que aprender ao revisar
-
-- `@Test`, `assertEquals`, `assertThrows`: expectativas executaveis.
-- Mockito `@Mock`, `when`, `verify`: substituir dependencias em testes unitarios.
-- `@SpringBootTest` + `@DynamicPropertySource`: integrar o Spring a um banco
-  real e configurado dinamicamente.
-- `ExecutorService`, `CountDownLatch`, `Future`: concorrencia de duas sessoes.
-- `TransactionTemplate`: abrir e desfazer uma transacao Spring de verdade.
-- `DriverManager` + usuario OWNER/AUDIT: inspeções privilegiadas somente
-  dentro do ambiente de teste, nunca no usuario runtime WALLET_APP.

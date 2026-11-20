@@ -108,17 +108,17 @@ The script requires `curl` and `python3` and **creates permanent development
 wallet data**, unlike the SQL-only rollback-based scripts. Do not run it against
 production or an environment you want to keep unchanged.
 
-## Known limitations for C10/C11
+## Operational limitations
 
-1. The code has been assembled and statically inspected; Oracle + JVM HTTP
-   integration must be verified on the developer's Mac. `./mvnw clean verify`
-   and the HTTP smoke test are the acceptance criteria.
+1. Local verification reported on macOS: `./mvnw -U verify` completed
+   successfully after correcting the SQL*Plus SQLBLANKLINES setup in the
+   Testcontainers bootstrap. Reproduce on your own system before relying on it.
 2. C07 currently maps a cross-wallet simultaneous duplicate-key insertion to
    conflict even when its payload matches. Strong concurrent replay semantics
    require a dedicated regression test and, if needed, a later PL/SQL migration.
 3. Security is a simple system-to-system API key, not user authorization. Use
    HTTPS in a deployed environment; this test binds Oracle only to localhost.
-4. Swagger/OpenAPI and extensive unit/integration/concurrency tests are C10/C11.
+4. Swagger/OpenAPI is in C11; JUnit and Testcontainers are in C10. The optional k6 concurrency check is C12.
 5. C07 models insufficient funds as a returned REJECTED status, rather than
    `RAISE_APPLICATION_ERROR(-20004)`, to preserve the rejected request on commit.
    This intentional trade-off must remain documented for the evaluator.

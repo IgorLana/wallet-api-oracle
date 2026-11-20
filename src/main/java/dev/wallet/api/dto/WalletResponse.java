@@ -12,7 +12,7 @@ public record WalletResponse(
         OffsetDateTime updatedAt
 ) {
     public static WalletResponse from(Wallet wallet) {
-        return new WalletResponse(wallet.id(), wallet.holderName(), wallet.balance(),
+        return new WalletResponse(wallet.id(), wallet.holderName(), wallet.balance().setScale(2, java.math.RoundingMode.UNNECESSARY),
                 wallet.createdAt(), wallet.updatedAt());
     }
 }

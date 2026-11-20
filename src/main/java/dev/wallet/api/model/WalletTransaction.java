@@ -10,4 +10,10 @@ public record WalletTransaction(
         BigDecimal amount,
         BigDecimal balanceAfter,
         OffsetDateTime createdAt
-) { }
+) {
+    // Fixed-scale BRL representation in the public statement response.
+    public WalletTransaction {
+        amount = amount.setScale(2, java.math.RoundingMode.UNNECESSARY);
+        balanceAfter = balanceAfter.setScale(2, java.math.RoundingMode.UNNECESSARY);
+    }
+}

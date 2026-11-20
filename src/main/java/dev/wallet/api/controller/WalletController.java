@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -78,9 +79,13 @@ public class WalletController {
             @ApiResponse(responseCode = "401", description = "Invalid or missing API key"),
             @ApiResponse(responseCode = "404", description = "Wallet not found"),
             @ApiResponse(responseCode = "409", description = "Idempotency-Key conflict",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "Idempotency conflict",
+                                    value = "{\"code\":\"IDEMPOTENCY_KEY_CONFLICT\",\"message\":\"Idempotency-Key conflict\",\"status\":409,\"timestamp\":\"2026-11-19T20:00:00Z\"}"))),
             @ApiResponse(responseCode = "422", description = "Insufficient funds (historical rejection)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "Insufficient funds",
+                                    value = "{\"code\":\"INSUFFICIENT_FUNDS\",\"message\":\"Insufficient funds\",\"status\":422,\"timestamp\":\"2026-11-19T20:00:00Z\"}"))),
             @ApiResponse(responseCode = "503", description = "Wallet row lock timeout")
     })
     @PostMapping("/{id}/transactions")

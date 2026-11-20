@@ -32,4 +32,44 @@ class GlobalExceptionHandlerTest {
         assertEquals("DATABASE_ERROR", response.getBody().code());
         assertFalse(response.getBody().message().contains("sensitive"));
     }
+
+    @Test
+    void mapsInvalidAmountTo400() {
+        assertOracleMapping(20001, 400, "INVALID_AMOUNT");
+    }
+
+    @Test
+    void mapsUnknownWalletTo404() {
+        assertOracleMapping(20003, 404, "WALLET_NOT_FOUND");
+    }
+
+    @Test
+    void mapsLockTimeoutTo503() {
+        assertOracleMapping(20006, 503, "WALLET_BUSY");
+    }
+
+    @Test
+    void mapsInvalidIdempotencyKeyTo400() {
+        assertOracleMapping(20007, 400, "INVALID_IDEMPOTENCY_KEY");
+    }
+
+    @Test
+    void mapsInvalidHolderNameTo400() {
+        assertOracleMapping(20008, 400, "INVALID_HOLDER_NAME");
+    }
+
+    @Test
+    void mapsIncompleteRequestTo409() {
+        assertOracleMapping(20009, 409, "INCOMPLETE_REQUEST");
+    }
+
+    private void assertOracleMapping(int oracleCode, int httpStatus, String errorCode) {
+        SQLException sql = new SQLException("ORA-" + oracleCode, "72000", oracleCode);
+        ResponseEntity<ErrorResponse> response = handler.onDatabaseError(
+                new UncategorizedSQLException("procedure call", "call pkg_wallet", sql));
+        assertEquals(httpStatus, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals(errorCode, response.getBody().code());
+        assertEquals(httpStatus, response.getBody().status());
+    }
 }

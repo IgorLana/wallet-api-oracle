@@ -4,9 +4,10 @@ import dev.wallet.api.model.PagedTransactions;
 import dev.wallet.api.model.TransactionOutcome;
 import dev.wallet.api.model.Wallet;
 import dev.wallet.api.model.WalletTransaction;
+import org.springframework.jdbc.core.CallableStatementCreator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-import org.springframework.jdbc.core.CallableStatementCreator;
+
 import java.math.BigDecimal;
 import java.sql.CallableStatement;
 import java.sql.ResultSet;
@@ -19,8 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 @Repository
-public class
-WalletJdbcRepository {
+public class WalletJdbcRepository {
     private final JdbcTemplate jdbc;
 
     public WalletJdbcRepository(JdbcTemplate jdbc) {
@@ -29,7 +29,8 @@ WalletJdbcRepository {
 
     /** Only the package can perform writes. No INSERT/UPDATE/DELETE here. */
     public long createWallet(String holderName) {
-        Long id = jdbc.execute((CallableStatementCreator) connection -> {            CallableStatement cs = connection.prepareCall(
+        Long id = jdbc.execute((CallableStatementCreator) connection -> {
+            CallableStatement cs = connection.prepareCall(
                     "{call WALLET_OWNER.PKG_WALLET.CREATE_WALLET(?, ?, ?, ?)}");
             cs.setString(1, holderName);
             cs.registerOutParameter(2, Types.NUMERIC);
@@ -45,7 +46,8 @@ WalletJdbcRepository {
 
     public TransactionOutcome registerTransaction(
             long walletId, String idemKey, String type, BigDecimal amount) {
-        TransactionOutcome outcome = jdbc.execute((CallableStatementCreator) connection -> {            CallableStatement cs = connection.prepareCall(
+        TransactionOutcome outcome = jdbc.execute((CallableStatementCreator) connection -> {
+            CallableStatement cs = connection.prepareCall(
                     "{call WALLET_OWNER.PKG_WALLET.REGISTER_TRANSACTION(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}");
             cs.setLong(1, walletId);
             cs.setString(2, idemKey);

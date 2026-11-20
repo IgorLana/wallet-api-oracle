@@ -17,6 +17,7 @@ public record TransactionResponse(
             throw new IllegalArgumentException("Cannot map rejected attempt to ledger transaction");
         }
         return new TransactionResponse(outcome.transactionId(), outcome.walletId(),
-                outcome.type(), outcome.amount(), outcome.balanceAfter(), outcome.completedAt());
+                outcome.type(), outcome.amount().setScale(2, java.math.RoundingMode.UNNECESSARY),
+                outcome.balanceAfter().setScale(2, java.math.RoundingMode.UNNECESSARY), outcome.completedAt());
     }
 }

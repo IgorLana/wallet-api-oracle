@@ -35,3 +35,7 @@ build/
 .env
 .env.*
 !.env.example
+
+# k6 / C12 runtime artifacts contain local execution metadata
+/reports/c12/
+.DS_Store
