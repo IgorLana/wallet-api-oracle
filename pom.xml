@@ -39,6 +39,13 @@
             <artifactId>ojdbc11</artifactId>
         </dependency>
 
+        <!-- Spring Boot 4.1.x: springdoc 3.2.x supports WebMVC and Swagger UI. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+
         <!-- Spring Boot's test starter includes JUnit, Mockito and AssertJ. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
