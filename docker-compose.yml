@@ -1,19 +1,82 @@
+# Local evaluation: all services start with "docker compose up --build".
+# All default credentials are PUBLIC examples. Use only on isolated localhost.
+# An optional .env in the project root overrides the example defaults.
 services:
   oracle:
-    image: gvenzl/oracle-free:23.26.4-slim-faststart
+    build:
+      context: .
+      dockerfile: Dockerfile.oracle
+    image: wallet-api-oracle-local:23.26.4
     ports:
       - "127.0.0.1:1521:1521"
     environment:
-      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?Set ORACLE_PASSWORD in .env}
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-OracleLocalDev2026}
+      WALLET_OWNER_PASSWORD: ${WALLET_OWNER_PASSWORD:-WalletOwnerDev2026}
+      WALLET_APP_PASSWORD: ${WALLET_APP_PASSWORD:-WalletAppDev2026}
+      WALLET_AUDIT_PASSWORD: ${WALLET_AUDIT_PASSWORD:-WalletAuditDev2026}
     volumes:
       - oracle_data:/opt/oracle/oradata
       - ./db/init:/container-entrypoint-initdb.d:ro
+      # Bootstrap scripts are built into the Oracle image with executable permissions.
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
       interval: 10s
       timeout: 10s
       retries: 30
       start_period: 60s
+
+  flyway-audit:
+    image: flyway/flyway:13.12.2
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      FLYWAY_USER: WALLET_AUDIT
+      FLYWAY_PASSWORD: ${WALLET_AUDIT_PASSWORD:-WalletAuditDev2026}
+      FLYWAY_DEFAULT_SCHEMA: WALLET_AUDIT
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_CONNECT_RETRIES: "20"
+    volumes:
+      - ./db/migration/audit:/flyway/sql:ro
+    command: migrate
+    restart: "no"
+
+  flyway-owner:
+    image: flyway/flyway:13.12.2
+    depends_on:
+      flyway-audit:
+        condition: service_completed_successfully
+    environment:
+      FLYWAY_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      FLYWAY_USER: WALLET_OWNER
+      FLYWAY_PASSWORD: ${WALLET_OWNER_PASSWORD:-WalletOwnerDev2026}
+      FLYWAY_DEFAULT_SCHEMA: WALLET_OWNER
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CLEAN_DISABLED: "true"
+      FLYWAY_CONNECT_RETRIES: "20"
+    volumes:
+      - ./db/migration/owner:/flyway/sql:ro
+    command: migrate
+    restart: "no"
+
+  wallet-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SERVER_PORT: "8080"
+      # 'localhost' inside this container would point to the API, not Oracle.
+      DB_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      WALLET_APP_PASSWORD: ${WALLET_APP_PASSWORD:-WalletAppDev2026}
+      WALLET_API_KEY: ${WALLET_API_KEY:-WalletApiDemoKey2026}
+    depends_on:
+      flyway-owner:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
 volumes:
   oracle_data:

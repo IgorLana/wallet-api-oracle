@@ -6,26 +6,60 @@ API REST de carteiras digitais em reais (BRL). As regras de consistência financ
 
 ## 1. Pré-requisitos
 
-- Java 21 (`java -version`)
-- Docker Desktop / Docker Compose (reserve pelo menos 4 GiB de memória para o Oracle Free)
-- Terminal compatível com Bash (macOS, Linux ou Windows com WSL2)
-- Acesso à internet para baixar as imagens Docker e dependências Maven na primeira execução
-- `curl` para os exemplos HTTP; Python 3 para os scripts opcionais de verificação da API
+Para a **execução completa com Docker**, basta ter:
 
-Não é necessário instalar o Maven: o repositório já inclui o Maven Wrapper (`./mvnw`). A imagem do banco utiliza a versão fixa `gvenzl/oracle-free:23.26.4-slim-faststart`.
+- Git e Docker Desktop (Windows/macOS, com **Linux containers**) ou Docker Engine + Compose V2 (Linux).
+- Pelo menos **4 GiB disponíveis para o Oracle**, com memória adicional para o build Java.
+- Internet na primeira execução para baixar imagens Docker e dependências Maven.
 
-## 2. Execução a partir de um clone novo
+**Não é necessário instalar Ubuntu, Java, Maven, Python ou Bash para iniciar a API.**
+No Windows, execute os comandos abaixo diretamente no **PowerShell**. O Docker Desktop
+pode utilizar o WSL2 internamente, mas não exige que você abra um terminal Ubuntu.
+
+## 2. Execução com Docker Compose (Windows, macOS e Linux)
+
+O caminho recomendado para o avaliador utiliza **um comando**, com serviços
+independentes para Oracle, migrations e Spring Boot:
 
 ```bash
 git clone https://github.com/IgorLana/wallet-api-oracle.git
 cd wallet-api-oracle
-cp .env.example .env
+docker compose up --build
 ```
 
-O `.env.example` versionado contém **credenciais de demonstração prontas para uso local**. Em um clone novo, basta executar `cp .env.example .env`: não é necessário criar cinco senhas apenas para avaliar o projeto. Os valores de exemplo são:
+O Compose inicializa o Oracle, executa o bootstrap idempotente dos usuários,
+aplica primeiro as migrations de `WALLET_AUDIT`, depois as de `WALLET_OWNER`
+e, somente após o sucesso do Flyway, inicia o Spring Boot em Java 21.
+O primeiro início demora mais por causa do download das imagens, do build Maven
+e da inicialização do Oracle. Aguarde a mensagem de início da aplicação.
+
+**Acesse:** http://localhost:8080/swagger-ui.html e clique em **Authorize**
+com a chave de demonstração `WalletApiDemoKey2026`.
+
+**Não precisa criar `.env` para avaliar um clone novo.** O Compose utiliza
+os valores públicos de desenvolvimento descritos no `.env.example`.
+Essas credenciais destinam-se **exclusivamente a uma demonstração local**, não
+servem para produção nem ambientes compartilhados. As portas `8080` e `1521`
+ficam vinculadas a `127.0.0.1` no computador.
+
+Para inspecionar ou encerrar a aplicação:
+
+```bash
+docker compose ps -a
+docker compose logs -f wallet-api
+docker compose down
+```
+
+O último comando **preserva os dados Oracle**. Não utilize `docker compose down -v`
+como método de solução de problemas: isso apagaria o volume local.
+
+### Personalização opcional das credenciais
+
+Se quiser alterar as senhas **antes da primeira inicialização**, copie
+`.env.example` para `.env` e edite-o. O Docker Compose carrega esse arquivo
+automaticamente. Os valores públicos disponibilizados são:
 
 ```dotenv
-# APENAS PARA DEMONSTRAÇÃO LOCAL — nunca reutilize em produção
 ORACLE_PASSWORD=OracleLocalDev2026
 WALLET_OWNER_PASSWORD=WalletOwnerDev2026
 WALLET_APP_PASSWORD=WalletAppDev2026
@@ -33,19 +67,31 @@ WALLET_AUDIT_PASSWORD=WalletAuditDev2026
 WALLET_API_KEY=WalletApiDemoKey2026
 ```
 
-**Segurança:** essas credenciais são públicas e devem ser utilizadas somente em um ambiente local isolado. O arquivo `.env` real é ignorado pelo Git. Para ambientes compartilhados, remotos ou de produção, utilize segredos exclusivos, armazenamento seguro e HTTPS. As senhas dos três schemas devem ser **diferentes**, conter entre 12 e 64 caracteres, começar com uma letra e utilizar somente letras, números ou `_`. A API key deve conter pelo menos 16 caracteres.
+Se já existir um banco Oracle no volume Docker, **não altere somente o `.env`**:
+as senhas dos usuários persistidos não são redefinidas pelo bootstrap. O script
+reutiliza os usuários existentes sem resetar credenciais. Para instalações novas,
+escolha as credenciais antes de iniciar os containers pela primeira vez.
 
-**Se você já possui um `.env`, não o sobrescreva.** Os usuários Oracle existentes mantêm as senhas previamente cadastradas. Alterar somente o arquivo local pode provocar falhas de autenticação. Também não utilize `docker compose down -v` para resolver problemas de senha: esse comando remove os dados persistidos no volume local.
+### Modo alternativo: executar o Java na própria máquina
 
-Inicie o Oracle, crie os schemas e aplique as migrations versionadas:
+Para depuração local, com **Java 21 e Bash instalados**, o fluxo anterior continua
+disponível. No Windows, esta alternativa pode exigir Git Bash ou WSL2,
+**mas isso não se aplica à execução recomendada com Docker**.
 
 ```bash
+cp .env.example .env
 bash db/scripts/migrate.sh
+set -a
+source ./.env
+set +a
+./mvnw -U spring-boot:run
 ```
 
-Esse script inicia o container persistente do Oracle, cria os usuários com privilégios SYSDBA apenas durante o bootstrap e executa o Flyway primeiro para `WALLET_AUDIT` e depois para `WALLET_OWNER`. Ele pode ser executado novamente; o Flyway ignora as versões já aplicadas.
+Esse modo conecta a API ao banco publicado em `localhost:1521`. A aplicação
+containerizada utiliza o hostname interno `oracle:1521`. Não execute as duas
+APIs simultaneamente na porta `8080`.
 
-Valide a estrutura e o comportamento do banco:
+Verificações SQL opcionais do modo de desenvolvimento:
 
 ```bash
 bash db/scripts/verify-c04.sh
@@ -55,18 +101,8 @@ bash db/scripts/verify-c07.sh
 bash db/scripts/verify-c08.sh
 ```
 
-**Observação:** `verify-c08.sh` utiliza SYSDBA local para inspecionar ambos os schemas. A aplicação **nunca** se conecta com esse usuário. Não é necessário nem recomendado executar `docker compose down -v`, pois isso excluiria os dados locais do Oracle.
-
-Carregue a configuração local no terminal e inicie a aplicação:
-
-```bash
-set -a
-source ./.env
-set +a
-./mvnw -U spring-boot:run
-```
-
-A API estará disponível em `http://localhost:8080`. A aplicação utiliza `WALLET_APP` e não inicia se a senha do banco ou a API key obrigatória estiver ausente. No Windows, utilize o WSL2 ou outro ambiente compatível com Bash.
+Para arquitetura, comandos e resolução de problemas, consulte
+[`docs/docker-compose-setup.md`](docs/docker-compose-setup.md).
 
 ## 3. Swagger / OpenAPI
 
@@ -76,9 +112,9 @@ Com o Spring Boot em execução:
 - Especificação OpenAPI em JSON: http://localhost:8080/v3/api-docs
 - Especificação OpenAPI em YAML: http://localhost:8080/v3/api-docs.yaml
 
-Clique em **Authorize** no Swagger UI e informe o valor de `WALLET_API_KEY` definido no seu `.env`. O cabeçalho `X-API-Key` protege as rotas `/wallets`. As rotas de documentação são públicas no ambiente de desenvolvimento local; não inclua senhas ou chaves secretas na descrição OpenAPI.
+Clique em **Authorize** no Swagger UI e informe a `WALLET_API_KEY` (no clone novo, `WalletApiDemoKey2026`; caso personalizado, use o valor do `.env`). O cabeçalho `X-API-Key` protege as rotas `/wallets`. As rotas de documentação são públicas no ambiente de desenvolvimento local; não inclua senhas ou chaves secretas na descrição OpenAPI.
 
-Para verificar a especificação gerada sem criar dados financeiros:
+Para verificar a especificação gerada sem criar dados financeiros (opcional; requer terminal Bash no host):
 
 ```bash
 bash scripts/verify-c11.sh
@@ -213,7 +249,7 @@ O trigger de imutabilidade bloqueia operações SQL de `UPDATE` e `DELETE` enqua
 - Bootstrap de usuários: `db/bootstrap/create-users.sh`
 - Script de orquestração: `db/scripts/migrate.sh`
 
-O Flyway é executado fora da aplicação Spring; o usuário utilizado em tempo de execução não possui privilégios DDL. Executar somente `docker compose up` inicia o Oracle, **mas não cria os schemas**. Para preparar o ambiente completo, execute `bash db/scripts/migrate.sh`.
+O Flyway é executado em containers separados da aplicação Spring; o usuário utilizado em tempo de execução não possui privilégios DDL. **`docker compose up --build` prepara todo o ambiente automaticamente**, inclusive usuários Oracle e migrations. O script `bash db/scripts/migrate.sh` continua disponível para desenvolvimento local.
 
 ## 6. Testes
 
@@ -255,6 +291,7 @@ Para conhecer os parâmetros, os cuidados de segurança e as verificações deta
 - Arquitetura: [`docs/architecture.md`](docs/architecture.md)
 - Decisões e alternativas: [`DECISIONS.md`](DECISIONS.md)
 - Comparação com os requisitos e limitações: [`docs/final-review.md`](docs/final-review.md)
+- Inicialização com Docker Compose: [`docs/docker-compose-setup.md`](docs/docker-compose-setup.md)
 - Configuração local do Oracle: [`docs/oracle-local.md`](docs/oracle-local.md)
 - Migrations: [`docs/oracle-migrations.md`](docs/oracle-migrations.md)
 - Comportamento da API: [`docs/api-local.md`](docs/api-local.md)

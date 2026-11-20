@@ -18,12 +18,12 @@ Source: original 6-page PDF "Teste Tecnico - Desenvolvedor(a) Java com Oracle Da
 | Concurrency on same wallet | `FOR UPDATE WAIT 5`; `WalletOracleIT` | Covered by integration tests |
 | Idempotency across retries | Global PK request, V5 replay handling, `WalletOracleIT` | Implemented with documented race/timeout caveats |
 | Unit and real Oracle integration tests | `WalletServiceTest`, `GlobalExceptionHandlerTest`, `WalletControllerTest`, `WalletOracleIT` | Verified on developer macOS through C10; rerun after C12 changes |
-| Swagger/OpenAPI | springdoc 3.2.0, `OpenApiConfig`, controller annotations | Added in C11; runtime verification still required |
+| Swagger/OpenAPI | springdoc 3.2.0, `OpenApiConfig`, controller annotations | C11 smoke test passed locally (reported by project owner) |
 | API key | `ApiKeyFilter`, `WALLET_API_KEY` | Implemented for `/wallets` |
-| Database migrations versioned | Separate Flyway Compose services and migration directories | Implemented; run `migrate.sh` explicitly |
+| Database migrations versioned | Separate Flyway Compose services and migration directories | Automated in the default Docker Compose startup; manual script still available |
 | Documented errors and technical decisions | `GlobalExceptionHandler`, README, `DECISIONS.md` | Implemented with noted exception below |
 | GitHub public with author-owned commit history | Repository workflow | Candidate must verify prior to submission |
-| Load/concurrency test | `load/k6/c12-wallet.js`, `scripts/run-c12.sh`, `verify-c12-oracle.sh` | C12 script added; performance results require local run |
+| Load/concurrency test | `load/k6/c12-wallet.js`, `scripts/run-c12.sh`, `verify-c12-oracle.sh`, `docs/load-test-results.md` | C12 local test and reconciliation passed (reported by project owner); report includes verified balances and counts |
 
 ## Important transparent differences and limitations
 
@@ -31,9 +31,9 @@ Source: original 6-page PDF "Teste Tecnico - Desenvolvedor(a) Java com Oracle Da
 
 The PDF requests business errors from PL/SQL through `RAISE_APPLICATION_ERROR(-20000..-20999)`. Most invalid inputs and conflicts are raised this way. However, for insufficient funds V5 **returns** `status='REJECTED'`, `rejection_code='INSUFFICIENT_FUNDS'` rather than raising `-20004`. Spring commits that rejected request record and the controller translates it into HTTP 422. The design makes rejected retries stable even after the balance changes, but differs from the literal Oracle error-signaling requirement. This should be acknowledged in review and explained in the evaluation.
 
-### 2. Bootstrap is a documented two-stage process
+### 2. Database startup is now managed by Docker Compose
 
-`docker compose up -d oracle` starts the database, but does not by itself create all application schemas on an existing/fresh volume. `bash db/scripts/migrate.sh` starts Oracle and performs the privileged bootstrap and both Flyway migration stages. The PDF states the database Compose should come with schemas ready; our documented full setup requires this additional script. A future migration-runner service could make it one-command Compose-driven.
+`docker compose up --build` starts Oracle and runs the existing SYSDBA bootstrap as an Oracle startup script. Two one-shot Flyway services then migrate `WALLET_AUDIT` and `WALLET_OWNER` in order. The Spring Boot container starts only after both migration stages succeed. The original `bash db/scripts/migrate.sh` path remains available for manual development. Existing database volumes keep their original schema passwords; the script does not silently reset them. Verify this new infrastructure path on a clean clone before relying on it.
 
 ### 3. Idempotency under simultaneous retries
 
@@ -45,24 +45,26 @@ The auditor records `transaction_id=NULL` for a direct balance UPDATE when no ne
 
 ### 5. Test isolation and deployment
 
-`./mvnw verify` uses a disposable Oracle and original SQL DDL run through SQL*Plus; this is a strong integration test of the database logic but does not validate Flyway metadata in that disposable instance. The normal local bootstrap does exercise Flyway separately. No CI/CD pipeline, Java Dockerfile, production secret manager, TLS termination, or health/metrics endpoint has been added. C12 adds an optional local k6 load/concurrency check, not a production SLA. `X-API-Key` is a system-to-system credential; deploy behind HTTPS in a real environment.
+`./mvnw verify` uses a disposable Oracle and original SQL DDL run through SQL*Plus; this is a strong integration test of the database logic but does not validate Flyway metadata in that disposable instance. The normal local bootstrap does exercise Flyway separately. No CI/CD pipeline, production secret manager, TLS termination, or application health/metrics endpoint has been added. A Java multi-stage Dockerfile and Compose orchestration are provided for isolated local use. C12 adds an optional local k6 load/concurrency check, not a production SLA. `X-API-Key` is a system-to-system credential; deploy behind HTTPS in a real environment.
 
 ## Verification provenance
 
-The project owner confirmed a successful local `./mvnw -U verify` with Oracle
-Testcontainers on macOS on November 19, 2026, following a SQL*Plus configuration
-fix (`SET SQLBLANKLINES ON`). Compilation, unit tests and C08 trigger checks
-were also reported successful. **This C12 revision has not yet been run in the
-owner's environment**, so rerun the verification before claiming a pass of
-new HTTP, unit, grant or load tests. The external review was static because
-its network proxy blocked Docker Hub and Maven Central.
+The project owner reported successful `./mvnw -U verify` with Oracle Testcontainers,
+C08 Oracle checks, C11 Swagger/OpenAPI smoke checks and C12 k6/Oracle reconciliation
+on macOS. `docs/load-test-results.md` contains the verified C12 ledger and audit
+counts, although some performance metrics were not exported by the runner.
+
+The full **Docker-only** startup is new in this delivery. The configuration has
+been statically inspected, but a clean-clone execution of `docker compose up
+--build` has not yet been verified by the author on Windows/macOS/Linux.
+Do not present this check as completed until actual execution confirms it.
 
 ## Pre-submission checklist
 
-- [ ] Fresh clone: copy `.env.example` to `.env`, use included demo-only credentials, run `bash db/scripts/migrate.sh`.
-- [ ] Run `verify-c04.sh` through `verify-c08.sh` and inspect output.
+- [ ] Fresh clone on Windows/macOS/Linux: `docker compose up --build`, no `.env` required; inspect `docker compose ps -a`.
+- [ ] Optionally run `verify-c04.sh` through `verify-c08.sh` from a Bash-capable development terminal.
 - [ ] Run `./mvnw -U verify` with Docker Desktop available and inspect reports.
-- [ ] Start API using `./mvnw spring-boot:run` after loading `.env`.
+- [ ] Confirm containerized API started after both Flyway services exited successfully (`docker compose logs`).
 - [ ] Check `/swagger-ui.html` and `/v3/api-docs` and run `bash scripts/verify-c11.sh`.
 - [ ] Exercise one credit and one insufficient-funds debit via Swagger or curl.
 - [ ] Check DB data consistency and no unintended committed test data.

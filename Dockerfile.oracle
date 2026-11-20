@@ -1,0 +1,15 @@
+FROM gvenzl/oracle-free:23.26.4-slim-faststart
+
+USER root
+
+RUN mkdir -p /opt/wallet-bootstrap \
+    && chmod 755 /opt/wallet-bootstrap
+
+COPY --chmod=755 db/startdb/01-bootstrap-wallet-users.sh /container-entrypoint-startdb.d/01-bootstrap-wallet-users.sh
+
+COPY --chmod=644 db/bootstrap/create-users.sh /opt/wallet-bootstrap/create-users.sh
+
+RUN chmod 755 /opt/wallet-bootstrap \
+    && chmod 644 /opt/wallet-bootstrap/create-users.sh
+
+USER oracle

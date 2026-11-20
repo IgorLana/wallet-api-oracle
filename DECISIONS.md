@@ -26,13 +26,13 @@ Status: `ADOTADA` = decisão inicial; `ABERTA` = precisa ser resolvida antes de 
 
 ## DEC-03 — Migrations separadas da aplicação — ADOTADA
 
-**Decisão:** Docker Compose sobe Oracle; bootstrap versionado cria usuários; Flyway migra `WALLET_AUDIT` antes de `WALLET_OWNER`, por passos independentes. A API utiliza somente `WALLET_APP`.
+**Decisão:** o Docker Compose padrão orquestra Oracle, bootstrap idempotente via startup script, Flyway de `WALLET_AUDIT` antes de `WALLET_OWNER` e, por fim, a API Java em container próprio. A API utiliza somente `WALLET_APP`; migrations usam seus respectivos owners.
 
 **Motivo:** reprodutibilidade e separacao de privilegios. Nada de `ddl-auto=update`.
 
 **Alternativa rejeitada:** conceder `CREATE TABLE` ou privilegios de owner para `WALLET_APP`.
 
-**Consequencia:** documentar fluxo de primeira inicialização e migrations em README; testar do zero.
+**Consequência:** `docker compose up --build` e o caminho principal para um clone novo, sem Java/Bash no host. O modo manual com `db/scripts/migrate.sh` permanece como alternativa. Validar a sequencia em um ambiente limpo antes da entrega.
 
 ## DEC-04 — JDBC para chamada de procedures; leitura por views — ADOTADA
 
@@ -151,6 +151,16 @@ estado reservado, nao uma etapa atualmente persistida.
 **Decisão:** primeiro entregar nucleo completo; testes de integração Oracle real para concorrência, idempotencia, falta de saldo, trigger de extrato e auditoria. Adicionar teste de carga ou recursos opcionais apenas se houver tempo.
 
 **Motivo:** o enunciado valoriza a qualidade, a justificativa das decisões e a prova das invariantes mais do que o número de funcionalidades.
+
+## DEC-16 — Containers separados, uma unica orquestracao — ADOTADA
+
+**Decisão:** Spring Boot usa `Dockerfile` multi-stage (Maven com Java 21 para compilar; Java 21 JRE para executar). O Compose coordena `oracle` → `flyway-audit` → `flyway-owner` → `wallet-api`. O bootstrap SYSDBA ocorre somente no container Oracle, sem conceder privilégios a API.
+
+**Motivo:** permitir que o avaliador utilize `docker compose up --build` em Windows, macOS ou Linux sem instalar Maven/JDK/Bash e manter o isolamento por serviço. O host expõe apenas as portas 8080 e 1521 em `127.0.0.1`.
+
+**Alternativa rejeitada:** juntar Oracle e Spring Boot numa mesma imagem/processo, misturando ciclo de vida, persistência e privilégios; ou exigir scripts Bash em toda estação do avaliador.
+
+**Limites:** imagens e dependências precisam de conexão com repositórios no primeiro build, o Oracle exige memória suficiente e as credenciais padrão são exclusivas para demonstração local. O build Docker pula execução de testes; o `./mvnw verify` continua sendo a suíte independente. Em volumes já existentes, o bootstrap não modifica senhas antigas.
 
 ---
 
